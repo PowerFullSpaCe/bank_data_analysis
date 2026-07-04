@@ -24,3 +24,5 @@ The project consists of the following sections:
    Reduced macroeconomic variables turned out to be the most significant factors in the XGBoost decision-making process. Whether a client had been contacted previously was also a strong indicator of their future behaviour. These insights could be leveraged to optimize future marketing campaigns.
    
 All the details ycan be found in the source code and rendered HTML report.
+
+Source of the dataset: https://archive.ics.uci.edu/dataset/222/bank+marketing
