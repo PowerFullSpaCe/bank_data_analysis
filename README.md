@@ -16,4 +16,5 @@ The project consists of the following sections:
    XGBoost achieved the highest ROC-AUC score on this dataset and was therefore selected as the final model for evaluation on the test dataset. While there were no signs of overfitting, I could improve recall and precision by adjusting the classification threshold, which had previously been set set to the default value of 0.5 for all the trained models.
 5. __Error and feature importance analysis__
    Reduced macroeconomic variables turned out to be the most significant factors in the XGBoost decision-making process. Whether a client had been contacted previously was also a strong indicator of their future behaviour. These insights could be leveraged to optimize future marketing campaigns.
+   
 All the details ycan be found in the source code and rendered HTML report.
