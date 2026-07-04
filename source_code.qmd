@@ -1,0 +1,1738 @@
+---
+title: "Projekt z eksploracji danych. Klasyfikacja "
+lang: pl
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    theme: cosmo
+    df-print: paged
+    fig-width: 9
+    fig-height: 5.5
+    html-math-method: mathml
+    embed-resources: true
+execute:
+  echo: false
+  warning: false
+  message: false
+  error: false
+editor: visual
+---
+
+# Problem predykcyjny oraz charakterystyka analizowanego zbioru danych
+
+Lokata terminowa jest produktem bankowym polegającym na zdeponowaniu środków na z góry określony czas, zwykle w zamian za ustalone oprocentowanie. W praktyce klient akceptuje ograniczoną dostępność pieniędzy w okresie trwania lokaty, a bank może przewidywać, jak długo będzie dysponował tym kapitałem.
+
+Analizowany zbiór danych dotyczy kampanii telemarketingowej portugalskiej instytucji bankowej. Problem danych polega na wykorzystaniu informacji o kliencie, historii kontaktów oraz kontekście społeczno-ekonomicznym do oceny, czy dana osoba założy lokatę terminową. Problem predykcyjny jest klasyfikacją binarną: zmienna wynikowa `y` przyjmuje wartości `yes` albo `no`, czyli informuje, czy klient podpisał umowę lokaty.
+
+Poniższa tabela przedstawia słownik zmiennych wykorzystanych w zbiorze danych.
+
+| Zmienna | Typ | Przyjmowane wartości / zakres | Znaczenie praktyczne |
+|------------------|------------------|------------------|------------------|
+| `age` | numeryczna | wiek klienta w latach | Wiek klienta kontaktowanego w kampanii. |
+| `job` | jakościowa | `admin.`, `blue-collar`, `entrepreneur`, `housemaid`, `management`, `retired`, `self-employed`, `services`, `student`, `technician`, `unemployed`, `unknown` | Typ wykonywanej pracy. |
+| `marital` | jakościowa | `divorced`, `married`, `single`, `unknown` | Status cywilny; `divorced` obejmuje osoby rozwiedzione i owdowiałe. |
+| `education` | jakościowa | `basic.4y`, `basic.6y`, `basic.9y`, `high.school`, `illiterate`, `professional.course`, `university.degree`, `unknown` | Poziom wykształcenia klienta. |
+| `default` | jakościowa | `no`, `yes`, `unknown` | Informacja, czy klient ma niespłacone zobowiązanie kredytowe. |
+| `housing` | jakościowa | `no`, `yes`, `unknown` | Informacja, czy klient ma kredyt mieszkaniowy. |
+| `loan` | jakościowa | `no`, `yes`, `unknown` | Informacja, czy klient ma kredyt osobisty. |
+| `contact` | jakościowa | `cellular`, `telephone` | Typ kanału kontaktu z klientem. |
+| `month` | jakościowa | miesiące od `mar` do `dec` występujące w danych | Miesiąc ostatniego kontaktu w bieżącej kampanii. |
+| `day_of_week` | jakościowa | `mon`, `tue`, `wed`, `thu`, `fri` | Dzień tygodnia ostatniego kontaktu. |
+| `duration` | numeryczna | czas w sekundach | Czas trwania ostatniej rozmowy; zmienna dostępna dopiero po kontakcie. |
+| `campaign` | numeryczna | liczba kontaktów w bieżącej kampanii | Liczba kontaktów wykonanych dla klienta w ramach bieżącej kampanii. |
+| `pdays` | numeryczna | liczba dni; `999` oznacza brak wcześniejszego kontaktu | Liczba dni od ostatniego kontaktu w poprzedniej kampanii. |
+| `previous` | numeryczna | liczba wcześniejszych kontaktów | Liczba kontaktów przed bieżącą kampanią. |
+| `poutcome` | jakościowa | `failure`, `nonexistent`, `success` | Wynik poprzedniej kampanii marketingowej. |
+| `emp.var.rate` | numeryczna | wskaźnik kwartalny | Wskaźnik zmienności zatrudnienia. |
+| `cons.price.idx` | numeryczna | wskaźnik miesięczny | Indeks cen konsumpcyjnych. |
+| `cons.conf.idx` | numeryczna | wskaźnik miesięczny | Indeks zaufania konsumentów. |
+| `euribor3m` | numeryczna | dzienny wskaźnik procentowy | Trzymiesięczna stopa Euribor. |
+| `nr.employed` | numeryczna | wskaźnik kwartalny | Liczba zatrudnionych w gospodarce. |
+| `y` | jakościowa binarna | `yes`, `no` | Informacja, czy klient założył lokatę terminową. |
+
+## Eksploracyjna analiza danych
+
+W tej części projektu skupimy się na:
+
+- czyszczeniu danych i wstępnej selekcji cech;
+
+- głębszym scharakteryzowaniu analizowanego zbioru danych;
+
+- wstępnym przygotowaniu danych do budowy dalszych modeli predykcyjnych;
+
+- wizualnej analizie danych, jakie mamy do dyspozycji.
+
+```{r}
+#| include: false
+Sys.setlocale("LC_ALL", "Polish_Poland.1250")
+options(encoding = "UTF-8")
+
+library(dplyr)
+library(tidymodels)
+library(ggplot2)
+library(scales)
+
+theme_project <- function(base_size = 11) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5, color = "#17324d"),
+      plot.subtitle = element_text(hjust = 0.5, color = "#5f6f7f"),
+      axis.title = element_text(face = "bold", color = "#17324d"),
+      axis.text = element_text(color = "#2f3b45"),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      legend.position = "none"
+    )
+}
+
+theme_set(theme_project())
+
+# Ustawienia dla prawidłowego wyświetlania polskich znaków
+options(encoding = "UTF-8")
+
+df <- read.csv("C:/Users/morem/Downloads/bank-additional-full.csv", sep = ";")
+```
+
+```{r}
+#| include: false
+sum(is.na(df))
+```
+
+```{r}
+#| include: false
+sum(duplicated(df))
+```
+
+```{r}
+#| include: false
+df[duplicated(df) | duplicated(df, fromLast = TRUE),]
+```
+
+```{r}
+#| include: false
+library(dplyr)
+df <- df %>%
+  distinct()
+```
+
+```{r}
+#| include: false
+sum(duplicated(df))
+```
+
+Ze zbioru danych usunięto w pełni zduplikowane wiersze. Było ich łącznie 12. Liczba ta wskazuje na ewentualny błąd podczas wprowadzania danych oraz usunięcie tylu wierszy nie zaburza dalszej analizy.
+
+Następnie odkryto, że brakujące dane były zapisane we wszystkich kolumnach jako `unknown` . Zamieniono te wartości na Not a Value `NA` . Wykryto poniższe udziały procentowe braków:
+
+```{r}
+#| include: false
+# zamienić unknown na na
+df[df == "unknown"] <- NA
+```
+
+```{r}
+#| include: false
+summary(df)
+```
+
+Podsumowanie zbioru danych wskazuje na to, że nie ma zmiennych, w których mogłyby występować jednowymiarowe obserwacje odstające. Zmienne ciągłe, takie jak `emp.var.rate` , `cons.price.idx` , `cons.conf.idx` , `euribor3m` nie posiadają obserwacji znacząco odbiegających od trzeciego kwartyla, a zatem nie ma konieczności badania jednowymiarowych obserwacji odstających dla nich, również z tego względu, że wahania tych współczynników są powodowane różnymi wydarzeniami na rynku i sytuacją ekonomiczną Portugalii.
+
+```{r}
+#| include: false
+nrow_df <- nrow(df)
+missing_summary <- data.frame(
+  Zmienna = names(df),
+  Braki = sapply(df, function(x) sum(is.na(x))),
+  Obserwacje = nrow_df
+) %>%
+  mutate(`Udział braków (%)` = round(Braki / Obserwacje * 100, 2))
+
+knitr::kable(
+  missing_summary,
+  caption = paste("Sumaryczna liczba braków danych:", sum(is.na(df)))
+)
+```
+
+```{r}
+library(tidyr)
+# stworzenie ramki danych z brakującymi wartościami,
+# by je zwizualizować
+missing_counts_df <- df %>%
+  summarise(across(everything(),~sum(is.na(.)))) %>%
+  pivot_longer(cols = everything(),
+               names_to = "column",
+               values_to = "missing_counts")
+missing_gt1 <- missing_counts_df %>%
+  filter(missing_counts>0) %>%
+  mutate(percentage = (missing_counts/nrow_df)*100)
+```
+
+```{r}
+library(ggplot2)
+ggplot(missing_gt1, aes(x =column, y = missing_counts, fill = column)) +
+  geom_col(alpha = 0.85, color = "white", width = 0.72) +
+  geom_text(aes(label = paste0(missing_counts, "\n", round(percentage,2),"%")), vjust = -0.35, size = 3.3, fontface = "bold", lineheight = 0.9) +
+  scale_fill_manual(values = rep(c("#1f4e79", "#86a6c0", "#b2c8db"), length.out = nrow(missing_gt1))) +
+  scale_y_continuous(labels = comma_format(big.mark = " "), expand = expansion(mult = c(0, 0.16))) +
+  labs(title = "Braki danych",
+       x = "Zmienne z brakami danych",
+       y = "Liczba brakujących wartości") +
+  theme_project()
+```
+
+```{r}
+#nonexistent bedzie jako informacja o tym, ze ten klient jest nowym klientem
+df <- df %>%
+  mutate(across(where(is.character), as.factor))
+#glimpse(df)
+for (col_name in colnames(df)) {
+  if (is.factor(df[[col_name]])) {
+    df[[col_name]] <- droplevels(df[[col_name]])
+  }
+}
+```
+
+Jak widać, w zbiorze znajduje się dużo zmiennych kategorycznych. Zapoznajmy się z nimi:
+
+```{r}
+# dodać liczebności lub porcenty nad słupkami + upiększyć wygląd
+#przeważające grupy
+library(patchwork)
+
+create_barplot <- function(column_name) {
+  ggplot(df %>% filter(!is.na(.data[[column_name]])),
+         aes(x = .data[[column_name]], fill = .data[[column_name]])) +
+    geom_bar(alpha = 0.85, color = "white", width = 0.72) +
+    geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.25, size = 2.9, fontface = "bold") +
+    scale_y_continuous(labels = comma_format(big.mark = " "), expand = expansion(mult = c(0, 0.14))) +
+    labs(y = "Liczebność")+
+    theme_project() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "none") +
+    labs(x = column_name)
+}
+
+cols_to_plot <- c("job", "marital", "education", "default", "housing",
+                  "loan", "contact", "month", "day_of_week", "poutcome", "y")
+
+plots <- lapply(cols_to_plot, create_barplot)
+```
+
+```{r}
+(plots[[1]] + plots[[2]]) / (plots[[3]] + plots[[4]])
+```
+
+```{r}
+(plots[[5]] + plots[[6]]) / (plots[[7]] + plots[[8]])
+```
+
+```{r}
+(plots[[9]] + plots[[10]]) / plots[[11]]
+```
+
+```{r}
+#| include: false
+#liczebnosc osob zalegajacych splacenije kredytu
+df %>% filter(default == "yes")
+```
+
+Decydujemy się na usunięcie zmiennej `default`, ponieważ zawiera ekstremalne braki danych, z którymi prawie niemożliwym jest poradzenie sobie próbkowaniem lub under- lub oversamplingiem. Nie jesteśmy w stanie w żaden sposób połączyć wartości zmiennych z innymi kategoriami, ani ich poprawnie imputować. Zmienna `default` jest zmienną near-zero variance.
+
+```{r}
+contact_summary <- data.frame(
+  Opis = c(
+    "Klienci, z którymi nie kontaktowano się przed obecną kampanią",
+    "Klienci, z którymi nie kontaktowano się poprzednio wcale",
+    "Klienci bez poprzedniego kontaktu i bez kontaktu przed obecną kampanią"
+  ),
+  Liczba = c(
+    nrow(df[df$previous==0,]),
+    nrow(df[df$pdays==999,]),
+    nrow(df[(df$pdays==999) & (df$previous==0) & (df$poutcome=="nonexistent"),])
+  )
+)
+
+knitr::kable(contact_summary, caption = "Podsumowanie wcześniejszych kontaktów z klientami")
+```
+
+Z rozpatrywanego zbioru danych usuwamy również takie zmienne jak `campaign` i `duration`, ponieważ w tej pracy skupiamy się na budowie modeli predykcyjnych, a nie analitycznych. Gdybyśmy zostawili te zmienne, oznaczałoby to, że:
+
+- `campaign` : z góry wiemy, ile razy będziemy kontaktować się z klientem. Natomiast nie posiadamy początkowo takich informacji. Ponadto większa liczba kontaktów może oznaczać pracę z trudniejszym klientem, a mniejsza liczba kontaktów - z klientami, których nie trzeba przekonywać albo poświęcać ponadprzeciętnej ilości czasu, ponieważ, do przykładu, od razu byli zainteresowani wzięciem kredytu. W każdym razie, zostawiając tę zmienną, doprowadzilibyśmy do przecieku danych oraz do posiadania w modelu zmiennej [niemożliwej do określenia przed rozpoczęciem kampanii]{.underline};
+
+- `duration` : mamy bardzo podobną sytuację, ponieważ z reguły osoby zainteresowane kredytem będą dłużej rozmawiać niż osoby nim nie zainteresowane (jak na przykład sami odrzucamy różne oferty od banków, które nas zupełnie nie interesują). Nie są to statystyczne stwierdzenia, a jedynie rozumienie problemu, z którym mamy do czynienia. W tym przypadku bowiem znowu nie posiadamy informacji o długości rozmowy telefonicznej przed rozpoczęciem kampanii, natomiast jeżeli rozmowa ta miała długość trwania 0 sekund, to zmienna wynikowa `y` ma wartość 0, czyli klient nie podpisał umowy o kredyt. W takiej sytuacji znowu mamy do czynienia ze [zjawiskiem przecieku danych]{.underline}, czego chcemy uniknąć za wszelką cenę podczas budowy modelu predykcyjnego, jeżeli chcemy móc oceniać jego zdolność do generalizacji.
+
+Dla zmiennej `age` tworzymy biny, aby prognozować podpisanie kredytu uwzględniając poszczególne kategorie wiekowe. Natomiast zmienną `pdays` "rozbijamy" na dwie:
+
+- `was_contacted_before` : wskazuje, czy poprzednio dany klient był kontaktowany. Jest to zmienna kategoryczna i jest krokiem inżynierii cech.
+
+- `clean_pdays` : wskazuje na liczbę dni, które minęły od czasu, gdy skontaktowano się z klientem po raz ostatni. Ma wartość `NA` , gdy z danym klientem nigdy przedtym się nie kontaktowano. Takiej sytuacji nie możemy zakodować jako 0, bo oznaczałoby to, że od ostatniego kontaktu z klientem minęło 0 dni. Żadna liczba całkowita nie odda nam poprawnego charakteru takiej informacji.
+
+  Natomiast sama liczba `pdays` , różna od 999, może wnieść dodatkowe informacje do modelu predykcyjnego, dlatego uwzględniamy `clean_pdays` , a nie samą `was_contacted_before` .
+
+A zatem, obie te zmienne odzwierciedlają poprawne zakodowanie zmiennej `pdays.` Jeżeli mamy brak w zmiennej `clean_pdays` , zmienna `was_contacted_before` wskazuje, że z danym klientem nigdy się nie kontaktowano. W ten sposób obie te zmienne są ze sobą powiązane i skorelowane.
+
+```{r}
+# binnujemy niektore zmienne i rozbijamy pdays
+df_binned <- df %>%
+  mutate(age_bin = cut(age, breaks = c(0,20, 25,30,40,50,60,70,80,90,100)),
+         was_contacted_before = ifelse(pdays == 999, 0, 1),
+         clean_pdays = ifelse(pdays == 999, NA, pdays),)
+df_binned$was_contacted_before <- as.factor(df_binned$was_contacted_before)
+df_binned <- df_binned %>%
+  mutate(y = forcats::fct_relevel(y, "yes", "no"))
+```
+
+```{r}
+#| include: false
+# sprawdzic czy campaign jest powiazane z poutcome - jesli tak, to moze nam zaburzac analize?
+cat("Df campaign: ",unique(df$campaign), "\n") #podzielic w biny dziesiatkami
+cat("Df previous: ",unique(df$previous), "\n")
+cat("Df pdays: ",unique(df$pdays), "\n")
+```
+
+```{r}
+hist_data <- list(
+  campaign = df$campaign,
+  previous = df$previous[df$previous!=0],
+  pdays = df$pdays[df$pdays!=999]
+)
+```
+
+::: panel-tabset
+### Campaign
+
+```{r}
+hist(hist_data$campaign,
+     main = "Liczba kontaktów w bieżącej kampanii",
+     xlab = "campaign",
+     ylab = "Liczebność",
+     col = "#86a6c0",
+     border = "white")
+```
+
+### Previous
+
+```{r}
+hist(hist_data$previous,
+     main = "Liczba wcześniejszych kontaktów",
+     xlab = "previous",
+     ylab = "Liczebność",
+     col = "#86a6c0",
+     border = "white")
+```
+
+### Pdays
+
+```{r}
+hist(hist_data$pdays,
+     main = "Liczba dni od poprzedniego kontaktu",
+     xlab = "pdays",
+     ylab = "Liczebność",
+     col = "#86a6c0",
+     border = "white")
+```
+:::
+
+Przekształcamy również zmienną `previous` , by uwzględnić częstość kontaktu z danym klientem w przeszłości. Liczbę powyżej trzech dni łączymy do kategorii 3, która oznacza, że z danym klientem kontaktowano się co najmniej trzy razy w przeszłości przed daną kampanią. Kategoryzujemy tę zmienną ze względu na liczebność poszczególnych prób kontaktu oraz z tego względu, że nowo utworzone kategorie odpowiadają częstości: nigdy (0) -\> rzadko (1) -\> częściej (2) -\> często (3 = 3+).
+
+```{r}
+library(dplyr)
+df %>%
+  ggplot(aes(x = as.factor(previous)))+
+    geom_bar(fill = "#1f4e79", alpha = 0.85, color = "white")+
+    geom_text(stat="count", aes(label = after_stat(count)), vjust = -0.3, fontface = "bold") +
+    scale_y_continuous(labels = comma_format(big.mark = " "), expand = expansion(mult = c(0, 0.12))) +
+    labs(title = "Liczba wcześniejszych kontaktów z klientem", x = "previous", y = "Liczebność") +
+    theme_project()
+```
+
+```{r}
+df_binned <- df_binned %>%
+  mutate(previous = as.factor(pmin(previous,3)))
+```
+
+```{r}
+#| include: false
+df_binned %>%
+  ggplot(aes(x = previous))+
+    geom_bar(fill = "#1f4e79", alpha = 0.85, color = "white")+
+    geom_text(stat="count", aes(label = after_stat(count)), vjust = -0.3, fontface = "bold") +
+    scale_y_continuous(labels = comma_format(big.mark = " "), expand = expansion(mult = c(0, 0.12))) +
+    labs(title = "Skategoryzowana liczba wcześniejszych kontaktów", x = "previous", y = "Liczebność") +
+    theme_project()
+```
+
+```{r}
+library(tidyverse)
+
+month_levels <- c("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+
+df_clean <- df %>%
+  mutate(month_num = as.numeric(factor(month, levels = month_levels))) %>%
+  mutate(year_diff = ifelse(month_num < lag(month_num, default = first(month_num)), 1, 0),
+         year = 2008 + cumsum(year_diff),
+         date = as.Date(paste(year, month_num, "01", sep = "-"))) %>%
+  group_by(date) %>%
+  summarise(
+    emp_var_rate = mean(emp.var.rate),
+    cons_price_idx = mean(cons.price.idx),
+    cons_conf_idx = mean(cons.conf.idx),
+    euribor3m = mean(euribor3m),
+    nr_employed = mean(nr.employed)
+  )
+
+# Definiujemy listę zmiennych i ich ładne nazwy
+vars_to_plot <- list(
+  emp_var_rate = "Wskaźnik zmienności zatrudnienia (emp.var.rate)",
+  cons_price_idx = "Wskaźnik cen konsumpcyjnych (cons.price.idx)",
+  cons_conf_idx = "Wskaźnik ufności konsumenckiej (cons.conf.idx)",
+  euribor3m = "Stopa Euribor 3-miesięczna (euribor3m)",
+  nr_employed = "Liczba pracowników (nr.employed)"
+)
+
+# Pętla generująca osobne wykresy zapisane w liście 'plots'
+plots <- imap(vars_to_plot, function(label, var_name) {
+  ggplot(df_clean, aes(x = date, y = .data[[var_name]])) +
+    geom_line(color = "#1f4e79", linewidth = 1.1) +
+    geom_point(color = "#17324d", size = 2) +
+    scale_x_date(date_breaks = "4 months", date_labels = "%b %Y") +
+    labs(title = label, x = "Data", y = "Wartość") +
+    theme_project() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+})
+```
+
+Poniżej znajdują się wykresy wartości poszczególnych zmiennych makroekonomicznych w przeciągu analizowanego okresu:
+
+::: panel-tabset
+### Euribor 3M
+
+```{r}
+plots$euribor3m
+```
+
+### Zatrudnienie
+
+```{r}
+plots$emp_var_rate
+```
+
+### Ceny
+
+```{r}
+plots$cons_price_idx
+```
+
+### Ufność
+
+```{r}
+plots$cons_conf_idx
+```
+
+### Liczba pracowników
+
+```{r}
+plots$nr_employed
+```
+:::
+
+```{r}
+# usuwanie redundantnych kolumn
+df_binned <- df_binned %>%
+  select(-age, -duration, -campaign, -pdays)
+```
+
+## Wielowymiarowe wartości odstające
+
+Wyznaczamy je za pomocą algorytmu lasu izolacyjnego, który pozwala określić wartości odstające również na podstawie zmiennych kategorycznych w odróżnieniu od często stosowanej odległości Mahalanobisa, która poradzi sobie jedynie z wartościami numerycznymi do określenia wielowymiarowych odległości odstających. Skupiamy się od razu na nich, ponieważ po uprzedniej analizie pozostałe zmienne numeryczne nie wykazywały obecności jednowymiarowych wartości odstających. Szczegóły implementacji lasu izolacyjnego można znaleźć w kodzie źródłowym projektu.
+
+```{r}
+#| include: false
+library(isotree)
+set.seed(2026)
+iso_model <- isolation.forest(df %>% select(-y), ntrees = 100)
+anomaly_score <- predict(iso_model, df %>% select(-y))
+outliers_iso <- which(anomaly_score>quantile(anomaly_score, 0.99))
+df[outliers_iso,]
+```
+
+```{r}
+library(ggplot2)
+ggplot(df[outliers_iso,], aes(x = y))+
+  geom_bar(fill = "#1f4e79", alpha=0.85, color = "white")+
+  geom_text(stat="count",aes(label= after_stat(count)), vjust = -0.3, fontface = "bold") +
+  scale_y_continuous(labels = comma_format(big.mark = " "), expand = expansion(mult = c(0, 0.12))) +
+  labs(title = "Rozkład decyzji wśród obserwacji odstających", x = "Czy klient założył lokatę?", y = "Liczebność") +
+  theme_project()
+```
+
+W zbiorze jest 412 wielowymiarowych obserwacji odstających. Wśród nich jest duży udział klientów, którzy wzięli kredyt w banku, na które wskazał algorytm drzewa izolacyjnego. Może to wynikać częściowo z faktu, że obserwacje pozytywnej klasy predykowanej stanowią mniejszość w analizowanym zbiorze danych. Zweryfikujemy teraz, które zmienne wpływają na to, że dana obserwacja jest uznawana za odstającą przez dany algorytm.
+
+### Wyjaśnienie anomalii
+
+Isolation Forest w wielu wymiarach wyznaczył wartości odstające. Natomiast jak wiedzieć, które kombinacje zmiennych powodują to, że dana obserwacja jest uznawana za odstającą?
+
+W tym celu zbudujemy proste drzewo decyzyjne, które będzie miało za zadanie dokonać predykcji tego, czy dana obserwacja jest obserwacją odstającą. Zbudowane drzewo oraz ważność zmiennych wskaża nam na predyktory anomalii. Nie uwzględniamy w tym kroku zmiennych dotyczących sytuacji gospodarczej ani danych czasowych, ponieważ nie są bezpośrednio związane z danym klientem. W tym kroku analizy chcemy wyłonić nietypowe obserwacje klientów.
+
+```{r}
+library(tidyverse)
+library(isotree)
+library(rpart)
+library(rpart.plot)
+
+# --- ROZWIĄZANIE: Model Zastępczy ---
+
+# 1. Tworzymy nowy zbiór, gdzie celem jest przewidzenie czy punkt to anomalia (1) czy nie (0)
+df_explain <- df_binned %>%
+  select(-y, -euribor3m, -emp.var.rate, -cons.price.idx, -cons.conf.idx,-nr.employed, -month, -day_of_week) %>%
+  mutate(is_outlier = factor(ifelse(row_number() %in% outliers_iso, "Anomalia", "Normalny")))
+
+# 2. Budujemy drzewo decyzyjne
+surrogate_tree <- rpart(is_outlier ~ ., data = df_explain, method = "class")
+
+# 3. Wyciągamy globalną ważność zmiennych
+# Pokazujemy, które zmienne najlepiej separowały anomalie od reszty danych
+importance_scores <- surrogate_tree$variable.importance
+
+global_importance <- data.frame(
+  Variable = names(importance_scores),
+  Importance = importance_scores
+) %>%
+  arrange(desc(Importance))
+
+knitr::kable(global_importance, digits = 2, caption = "Ważność zmiennych w drzewie zastępczym")
+
+# 4. Rysujemy drzewo, żeby zobaczyć konkretne reguły
+rpart.plot(surrogate_tree, box.palette = "RdBu", shadow.col = "gray", main = "Jakie reguły definiują anomalie?")
+```
+
+Z powyższego wykresu wynikają następujące reguły anomalii:
+
+1.  Osoba, z którą wcześniej się kontaktowano, posługująca się telefonem stacjonarnym - to nie jest dziwny przypadek i możliwym wyjaśnieniem może być skutek rozwoju technologii. Ta grupa osób w zbiorze to jedynie 113 obserwacji;
+2.  Osoba, z którą wcześniej się kontaktowano, posługująca się telefonem komórkowym, mająca pożyczkę w banku, a ponadto wykonująca jeden z zawodów: przedsiębiorca, zarządzanie, emeryt, usługi, student - łącznie mamy 86 takich obserwacji;
+3.  Osoba, z którą wcześniej się kontaktowano, posługująca się telefonem komórkowym, nie mająca pożyczki w banku, w wieku 80-90 lat - ta grupa jest bardzo małą grupą osób (21 osób), z którymi się kontaktowaliśmy, dlatego głównie ze względu na wiek, las izolacyjny uznał takie osoby za nietypowe na tle analizowanego zbioru danych.
+
+Tym samym zidentyfikowaliśmy nietypowe kombinacje cech w danych. Nie oznacza to, że są błędne. Stanowią rzadkie połączenie względem całości danych. Co ciekawe, dla większości z tych cech wynik poprzedniej kampanii był pozytywny (`success`). Nie usuwamy tych obserwacji, ponieważ mogą wspomóc modele w generalizacji w przypadkach nietypowych. W bankowości różnorodność i dopasowanie do klienta są zresztą ważne.
+
+# Przegląd literatury dotyczącej analizowanego problemu
+
+Problem projektowy można rozwiązywać jako klasyfikację binarną z użyciem różnych rodzin modeli: drzew decyzyjnych i ich rozszerzeń, modeli dyskryminacyjnych, regresji logistycznej, prostych sieci neuronowych oraz maszyn wektorów nośnych. W kontekście tego typu metod i eksploracji danych warto wskazać następujące pozycje literaturowe wymienione w materiałach wykładowych:
+
+- Fisher, R. A. 1936. "The Use of Multiple Measurements in Taxonomic Problems".
+- Quinlan, J. R. 1986. "Induction of Decision Trees".
+- Quinlan, J Ross. 1993. *C4. 5: Programs for Machine Learning*.
+- Breiman, Leo, Jerome Friedman, R. A. Olshen, and Charles J. Stone. 2017. *Classification and Regression Trees*.
+- Breiman, Leo. 2001. "Random Forests".
+- Hothorn, Torsten, Kurt Hornik, and Achim Zeileis. 2006. "Unbiased Recursive Partitioning: A Conditional Inference Framework".
+- Geurts, Pierre, Damien Ernst, and Louis Wehenkel. 2006. "Extremely Randomized Trees".
+- Friedman, Jerome H. 2001. "Greedy Function Approximation: A Gradient Boosting Machine".
+- Chen, Tianqi, and Carlos Guestrin. 2016. "XGBoost: A Scalable Tree Boosting System".
+- Ke, Guolin, Qi Meng, Thomas Finley, et al. 2017. "LightGBM: A Highly Efficient Gradient Boosting Decision Tree".
+- Breiman, Leo. 1996. "Bagging Predictors." *Machine Learning* 24 (2): 123–40
+- Breiman, Leo. 2001. "Random Forests." *Machine Learning* 45 (1): 5–32.
+
+# Zależności między zmiennymi
+
+## Zależności między wybranymi zmiennymi numerycznymi
+
+Dla każdej z par zmiennych przeprowadzamy test korelacji Pearsona i jako wartości macierzy dla przecinających się zmiennych wyświetlamy wartość p uzyskanego testu.
+
+$H_0: \text{dla danej pary zmiennych współczynnik korelacji liniowej Pearsona jest równy 0}$
+
+$H_1: \text{dla danej pary zmiennych współczynnik korelacji liniowej Pearsona jest różny od 0}$
+
+Wszystkie testy przeprowadzamy na poziomie istotności 0.05.
+
+```{r}
+library(Hmisc)
+library(ggcorrplot)
+
+# 1. Przygotowanie czystej macierzy numerycznej
+matrix_data <- df_clean %>%
+  select(emp_var_rate, cons_price_idx, cons_conf_idx, euribor3m, nr_employed) %>%
+  drop_na() %>%
+  as.matrix()
+
+# 2. Wykonanie testu korelacji Pearsona
+stat_test <- rcorr(matrix_data, type = "pearson")
+
+# Wyciągnięcie macierzy współczynników korelacji (r) oraz wartości p-value
+r_matrix <- stat_test$r
+p_matrix <- stat_test$P
+
+# 3. Wyświetlenie surowych wartości p-value w konsoli
+knitr::kable(p_matrix, digits = 4, caption = "Wartości p-value dla testu istotności korelacji")
+```
+
+```{r}
+library(tidyverse)
+library(GGally)
+
+# Przygotowanie danych numerycznych
+num_vars <- df_clean %>%
+  select(emp_var_rate, cons_price_idx, cons_conf_idx, euribor3m, nr_employed)
+
+# wykres korelacji
+ggcorr(num_vars,
+       method = c("pairwise", "pearson"),
+       label = TRUE,
+       label_round = 2,
+       label_alpha = TRUE,
+       high = "#1f4e79",
+       low = "#b2c8db",
+       name = "Korelacja (r)") +
+  labs(title = "Macierz korelacji wybranych zmiennych numerycznych") +
+  theme_project()
+```
+
+Analizujemy macierz korelacji wybranych zmiennych numerycznych, ponieważ niezasadnym jest porównywanie wieku klientów lub liczby dni, od kiedy po raz ostatni kontaktowaliśmy się z klientem, ze zmiennymi ekonomicznymi. Widzimy wysoką wartość współczynnika liniowej korelacji Pearsona dla następujących par zmiennych:
+
+- `nr.employed` i `emp.var.rate`
+
+- `emp.var.rate` i `euribor3m`
+
+- `emp.var.rate` i `cons.price.idx`
+
+Oznacza to, że wzrost wartości wskaźnika zmian zatrudnienia współwystępuje ze wzrostem wartości wskaźników inflacji, euriboru i liczby osób zatrudnionych. Tak samo sytuacja wygląda ze spadkami wartości tych zmiennych. Jeżeli ich wartości spadają, to spadają razem.
+
+Umiarkowana ujemna wartość współczynnika korelacji Pearsona występuje dla poniższych par zmiennych:
+
+- `cons_conf_idx` i `cons_price_idx`
+
+- `cons_conf_idx` i `emp_var_rate`
+
+Oznacza to, że wraz ze wzrostem wartości wskaźnika nastrojów konsumenckich spadają wartości wskaźnika zmienności zatrudnienia i wskaźnika inflacji.
+
+Zauważmy, że dla powyższych par współczynnik korelacji Pearsona ma wartość istotną statystycznie, czego dowodem są poprzednio przeprowadzone testy statystyczne i uzyskane na ich podstawie wartości p.
+
+## Zależności między zmiennymi jakościowymi
+
+Jako miarę związku między zmiennymi jakościowymi wykorzystujemy współczynnik V Cramera obliczany z poniższego wzoru:
+
+$$V = \sqrt{\frac{\chi^2}{n(k-1)}}$$
+
+gdzie $\chi^2$ jest statystyką chi-kwadrat obliczoną z testu chi-kwadrat, n jest liczebnością próby, k mniejszą liczbą z kategorii obu zmiennych. Wartość 0 oznacza brak związku, wartości bliskie 1 oznaczają silny związek.
+
+```{r}
+#| message: false
+#| warning: false
+library(purrr)
+library(ggcorrplot)
+
+# 1. Definiujemy pełną listę zmiennych jakościowych - w tym naszą zmienną wynikową y
+all_categorical_vars <- c("y","age_bin", "job", "marital", "education", "default",
+                          "housing", "previous","loan", "contact", "month", "day_of_week", "was_contacted_before", "poutcome")
+
+# 2. Funkcja pomocnicza licząca V Cramera dla pary zmiennych (zabezpieczona przed NA)
+get_v_cramer_pair <- function(var1, var2, data) {
+  # Jeśli badamy tę samą zmienną, współczynnik wynosi dokładnie 1
+  if (var1 == var2) return(1.0)
+
+  # Tworzymy tabelę kontyngencji usuwając w locie braki danych
+  tab <- table(data[[var1]], data[[var2]])
+
+  # Wykonujemy test Chi2
+  chi2 <- chisq.test(tab)$statistic
+  n <- sum(tab)
+  min_dim <- min(nrow(tab) - 1, ncol(tab) - 1)
+
+  # Obliczenie współczynnika
+  if (min_dim > 0) return(sqrt(chi2 / (n * min_dim))) else return(0)
+}
+
+# 3. Tworzymy pustą macierz kwadratową na wyniki
+n_vars <- length(all_categorical_vars)
+v_matrix <- matrix(0, nrow = n_vars, ncol = n_vars,
+                   dimnames = list(all_categorical_vars, all_categorical_vars))
+
+# 4. Wypełniamy macierz pętlą dla każdej pary
+for (i in 1:n_vars) {
+  for (j in 1:n_vars) {
+    v_matrix[i, j] <- get_v_cramer_pair(all_categorical_vars[i], all_categorical_vars[j], df_binned)
+  }
+}
+
+# 5. Rysowanie pełnej heatmapy (pokazujemy tylko dolny trójkąt, bo macierz jest symetryczna)
+ggcorrplot(v_matrix,
+           type = "lower",            # Ukrywa górny trójkąt, który jest lustrzanym odbiciem
+           method = "square",
+           lab = TRUE,                # Wyświetlamy wartości współczynników
+           lab_size = 3,
+           digits = 2,
+           colors = c("white", "#b2c8db", "#1f4e79"),
+           title = "Macierz zależności zmiennych jakościowych") +
+  labs(subtitle = "Współczynnik V Cramera dla wszystkich par",
+       x = "", y = "") +
+  theme_project() +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 13),
+    plot.subtitle = element_text(face = "italic", hjust = 0.5, size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1, face = "bold", size = 9),
+    axis.text.y = element_text(face = "bold", size = 9),
+    panel.grid.major = element_blank() # Usuwa zbędne linie siatki w tle
+  )
+```
+
+Silny związek wg tej miary występuje pomiędzy zmiennymi: `month` i `contact`, `education` i `job`. Słabszy związek widać pomiędzy zmiennymi `education` i `marital` oraz pomiędzy `job` i `marital` . `age_bin` jest naturalnie związane ze zmiennymi `job`,`marital` i `education`, a `poutcome` z `was_contacted_before` . Ze zmienną wynikową `y` najbardziej związane są `poutcome`, `was_contacted_before`, `previous` , `month`, `job`, `age_bin` oraz `contact` . A zatem możemy podejrzewać, że te zmienne mają wpływ na decyzje klienckie w sprawie założenia lokaty.
+
+## Success rate dla poszczególnych kategorii zmiennych jakościowych
+
+Na poniższych wykresach widnieje success rate - czyli liczba sukcesów kampanii (pozytywnej wartości zmiennej `y`) w poszczególnych grupach zmiennych kategorycznych. Na wykresach są przedstawione szare słupki, które pokazują rzeczywistą liczebność danej grupy w zbiorze. Dzięki temu nie otrzymujemy błędnego wrażenia na temat sukcesu grupy, przeoczając jej prawdziwą liczebność. Bo jeśli obserwacji w danej grupie jest mało, to potrzebujemy mniejszą liczbę klientów, by zwiększyć poziom sukcesu dla danej grupy.
+
+```{r}
+#| include: false
+library(ggplot2)
+library(dplyr)
+library(scales)
+
+plot_categorical_success_line <- function(data, cat_var, label_x) {
+  # 1. Przygotowanie danych i sortowanie od najwyższego success_rate
+  plot_data <- data %>%
+    group_by(!!sym(cat_var)) %>%
+    summarise(
+      success_rate = mean(y == "yes"),
+      success_count = sum(y == "yes"), # liczba sukcesow (y == yes)
+      count = n()                      # Ogólna liczebność grupy (do słupków w tle)
+    ) %>%
+    arrange(desc(success_rate)) %>%
+    # Zamieniamy na faktor z ustalonym porządkiem, żeby linia łączyła punkty po kolei
+    mutate(!!sym(cat_var) := factor(!!sym(cat_var), levels = !!sym(cat_var)))
+
+  max_count <- max(plot_data$count)
+
+  ggplot(plot_data, aes(x = !!sym(cat_var))) +
+    # 2. Słupki w tle (Ogólna liczebność) - skalowane do [0, 1]
+    geom_col(aes(y = count / max_count), fill = "gray90", alpha = 0.7, width = 0.7) +
+
+    # 3. LINIA TRENDU SUKCESU
+    geom_line(aes(y = success_rate, group = 1), color = "#1f4e79", linewidth = 1.2) +
+
+    # 4. PUNKTY NA LINII
+    geom_point(aes(y = success_rate, color = success_rate), size = 3.5, show.legend = FALSE) +
+    scale_color_gradient(low = "#b2c8db", high = "#1f4e79") +
+
+    # 5. ETYKIETY TEKSTOWE (Podmienione 'count' na 'success_count')
+    geom_text(aes(y = success_rate,
+                  label = paste0(percent(success_rate, accuracy = 0.1), "\n(n=", success_count, ")")),
+              vjust = -0.5, size = 2.8, lineheight = 0.8, fontface = "bold") +
+
+    # 6. PODWÓJNA OŚ Y
+    scale_y_continuous(
+      name = "Success rate (%)",
+      labels = percent,
+      expand = expansion(mult = c(0, 0.15)),
+      sec.axis = sec_axis(~ . * max_count, name = "Ogólna liczebność grupy (szare słupki)", labels = comma_format(big.mark = " "))
+    ) +
+
+    labs(
+      title = paste("Wpływ zmiennej '", label_x, "' na success rate i liczebność"),
+      x = label_x
+    ) +
+    theme_project() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid.major.x = element_blank(),
+      axis.title.y.left = element_text(color = "#1f4e79", face = "bold"),
+      axis.title.y.right = element_text(color = "gray50", face = "bold")
+    )
+}
+
+categorical_success_plots <- list(
+  job = plot_categorical_success_line(df_binned, "job", "job"),
+  poutcome = plot_categorical_success_line(df_binned, "poutcome", "Wynik poprzedniej kampanii"),
+  age_bin = plot_categorical_success_line(df_binned, "age_bin", "Grupa wiekowa"),
+  marital = plot_categorical_success_line(df_binned, "marital", "Status"),
+  education = plot_categorical_success_line(df_binned, "education", "Edukacja"),
+  default = plot_categorical_success_line(df_binned, "default", "Niespłacony kredyt"),
+  housing = plot_categorical_success_line(df_binned, "housing", "Hipoteka"),
+  loan = plot_categorical_success_line(df_binned, "loan", "Kredyt personalny"),
+  contact = plot_categorical_success_line(df_binned, "contact", "Typ kontakt"),
+  month = plot_categorical_success_line(df_binned, "month", "Miesiąc"),
+  day_of_week = plot_categorical_success_line(df_binned, "day_of_week", "Dzień tygodnia"),
+  previous = plot_categorical_success_line(df_binned, "previous", "Liczba kontaktów przed kampanią")
+)
+```
+
+::: panel-tabset
+### Zawód
+
+```{r}
+categorical_success_plots$job
+```
+
+### Poprzednia kampania
+
+```{r}
+categorical_success_plots$poutcome
+```
+
+### Wiek
+
+```{r}
+categorical_success_plots$age_bin
+```
+
+### Status
+
+```{r}
+categorical_success_plots$marital
+```
+
+### Edukacja
+
+```{r}
+categorical_success_plots$education
+```
+
+### Default
+
+```{r}
+categorical_success_plots$default
+```
+
+### Hipoteka
+
+```{r}
+categorical_success_plots$housing
+```
+
+### Kredyt
+
+```{r}
+categorical_success_plots$loan
+```
+
+### Kontakt
+
+```{r}
+categorical_success_plots$contact
+```
+
+### Miesiąc
+
+```{r}
+categorical_success_plots$month
+```
+
+### Dzień
+
+```{r}
+categorical_success_plots$day_of_week
+```
+
+### Previous
+
+```{r}
+categorical_success_plots$previous
+```
+:::
+
+Grupami cieszącymi się największym success ratem są:
+
+- studenci i emeryci (wg wieku osoby powyżej 60 lat oraz w przedziale wiekowym od 20 do 30 lat);
+
+- osoby, które już wcześniej założyły lokatę;
+
+- single oraz w niewielkim stopniu osoby rozwiedzione lub zamężne - tu nie występują drastyczne różnice wśród grup;
+
+- absolwenci uczelni wyższych;
+
+- osoby, które nie uregulowały należności związane z poprzednim kredytem;
+
+- im częściej kontaktowaliśmy się z klientem przed kampanią, tym większy był success rate w kampanii obecnej.
+
+Natomiast z powyższego możemy przypuszczać, że dzień tygodnia nie ma wpływu wynik kampanii dla danego klienta, jak i miesiąc kontaktu (bardziej to jest zależne od stanu gospodarki w danym momencie czasowym). Możemy również podejrzewać, że wpływu nie miały: obecność hipoteki lub kredytu personalnego.
+
+Na podstawie tych informacji w budowie dalszych modeli nie będziemy uwzględniać zmiennej `day_of_week` .
+
+## Success rate dla poszczególnych przedziałów zmiennych makroekonomicznych
+
+Poniżej sprawdzamy jak poszczególne wartości wskaźników ekonomicznych wpływają na decyzję klienta o wzięciu lokaty terminowej:
+
+```{r}
+library(tidyverse)
+library(scales)
+
+# 1. Definiujemy wektor zmiennych makroekonomicznych
+ekon_vars <- c("emp.var.rate", "cons.price.idx", "cons.conf.idx", "euribor3m", "nr.employed")
+
+# 2. Mapujemy zmienne bezpośrednio na wykresy ggplot
+wykresy_list <- map(ekon_vars, function(var_name) {
+
+  # Przygotowanie danych w locie pod wykres
+  df_plot <- df %>%
+    # cut_interval dzieli na 4 równe szerokością przedziały numeryczne
+    mutate(bins = cut_interval(!!sym(var_name), n = 4)) %>%
+    group_by(bins) %>%
+    summarise(
+      # Liczymy success rate bezpośrednio z "yes"
+      # dzielimy przez liczbę obserwacji w binie
+      success_rate = mean(y == "yes"),
+      liczba_klientow = n()
+    ) %>%
+    filter(!is.na(bins))
+
+  # Generowanie ładnego wykresu dla danej zmiennej
+  ggplot(df_plot, aes(x = bins, y = success_rate, fill = success_rate)) +
+    geom_col(color = "white", width = 0.75, show.legend = FALSE) +
+    # Dodanie etykiet z procentami nad słupkami
+    geom_text(aes(label = percent(success_rate, accuracy = 0.1)),
+              vjust = -0.5, size = 3.5, fontface = "bold") +
+    scale_fill_gradient(low = "#b2c8db", high = "#1f4e79") +
+    scale_y_continuous(labels = percent_format(accuracy = 1),
+                       expand = expansion(mult = c(0, 0.15))) +
+    labs(
+      title = paste("Wpływ zmiennej:", var_name, "na Success rate"),
+      x = paste("Przedziały wartości dla", var_name),
+      y = "Success rate (%)",
+      caption = "Analiza na podstawie zmiennej y ('yes'/'no')"
+    ) +
+    theme_project(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 12, hjust = 0.5),
+      axis.text.x = element_text(angle = 15, hjust = 1),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank()
+    )
+})
+
+# 3. Nadajemy nazwy elementom listy, żeby łatwo je wywoływać
+names(wykresy_list) <- ekon_vars
+```
+
+::: panel-tabset
+### Emp.var.rate
+
+```{r}
+wykresy_list$emp.var.rate
+```
+
+### Euribor 3M
+
+```{r}
+wykresy_list$euribor3m
+```
+
+### Cons.conf.idx
+
+```{r}
+wykresy_list$cons.conf.idx
+```
+
+### Cons.price.idx
+
+```{r}
+wykresy_list$cons.price.idx
+```
+
+### Nr.employed
+
+```{r}
+wykresy_list$nr.employed
+```
+:::
+
+Możemy wywnioskowaćć, że:
+
+- dla niższych wartości wskaźnika zmienności zatrudnienia mamy większą liczbę podpisanych lokat terminowych - może to wynikać z chęci klientów zabezpieczenia swoich oszczędności przed spadkiem ich wartości i zostawienia na lokacie pod korzystnym oprocentowaniem;
+
+- przy umiarkowanych wartościach `euribor3m` klienci są bardziej skłonni do zakładania lokat terminowych;
+
+- klienci również są bardziej skłonni do lokat, gdy mają dużą pewność w stabilnej sytuacji rynkowej oraz stopień inflacji jest stosunkowo niski;
+
+- natomiast jednocześnie zakładają więcej lokat, gdy w kraju występuje niższa liczba osób zatrudnionych - może to sugerować większe zainteresowanie produktami oszczędnościowymi w okresach słabszej koniunktury gospodarczej.
+
+Nie możemy również izolować wpływu poszczególnych wskaźników, bo są one ze sobą skorelowane. W naszym przypadku wyraźnie widać, że zmienne `emp.var.rate`, `euribor3m` i `nr.employed` opisują podobny aspekt koniunktury gospodarczej i wspólnie wskazują, że w okresach słabszej koniunktury klienci byli bardziej skłonni do zakładania lokat terminowych. Jednocześnie byli chętni to robić w sytuacjach dobrych nastrojów dotyczących sytuacji gospodarczej oraz niskiego poziomu inflacji. W naszych danych te fakty nie są sprzeczności. Bowiem w okresie od lipca 2009 roku do listopada 2009 roku współwystępują niski `emp.var.rate` i `cons.price.idx` oraz wysoki `cons.conf.idx`, co widać na wcześniej zaprezentowanych wizualizacjach.
+
+# Przygotowanie danych do dalszego procesu modelowania
+
+Najpierw dzielimy dane na zbiory treningowy, walidacyjny i testowy, aby podczas przygotowania danych nie dopuścić do statystycznego przecieku informacji ze zbioru testowego do treningowego.
+
+Głównym celem projektu jest klasyfikacja klienta, czyli ocena, czy osoba o danym profilu założy lokatę terminową. Z tego względu stosujemy losowy podział stratyfikowany według zmiennej `y`, aby zbiór treningowy i testowy zachowały podobny udział klasy pozytywnej `yes`. Wstępny podział chronologiczny wskazywał na silną zmianę udziału sukcesów w kolejnych częściach zbioru, co odpowiadałoby raczej zadaniu prognozowania przyszłych okresów kampanii niż klasycznej predykcji klienta.
+
+W walidacji modeli stosujemy pięciokrotną walidację krzyżową ze stratyfikacją. Pozwala to stabilniej porównać modele przy niezbalansowanej zmiennej wynikowej i zachować podobny udział klasy `yes` w każdym foldzie.
+
+```{r}
+#| eval: false
+#| include: false
+# 1. Podział losowy stratyfikowany według klasy decyzyjnej
+set.seed(2026)
+data_split <- initial_split(df_binned, prop = 0.8, strata = y)
+train_data <- training(data_split)
+test_data  <- testing(data_split)
+
+# Kontrola: rozkład klas po podziale train/test
+class_distribution <- bind_rows(
+  train_data %>% count(y) %>% mutate(zbior = "train"),
+  test_data %>% count(y) %>% mutate(zbior = "test")
+) %>%
+  group_by(zbior) %>%
+  mutate(udzial = n / sum(n)) %>%
+  ungroup() %>%
+  select(zbior, y, n, udzial)
+
+knitr::kable(
+  class_distribution,
+  digits = 4,
+  caption = "Rozkład klas w zbiorach treningowym i testowym po podziale stratyfikowanym"
+)
+
+# 2. Stratyfikowana walidacja krzyżowa na zbiorze treningowym
+folds <- vfold_cv(train_data, v = 5, strata = y)
+
+# Zapis podziału danych (potrzebny do finalizacji modelu)
+saveRDS(data_split, "data_split.rds")
+saveRDS(test_data, "test_data.rds")
+```
+
+Podział na train/test przeprowadzamy przed wszelkimi modyfikacjami i imputacjami, aby nie napotkać problemu przecieku danych pomiędzy tymi zbiorami. Do pracy z modelami wykorzystujemy framework `tidymodels` . W nim operacje takie jak MICE czy PCA zadeklarowane w `recipe` automatycznie uczą się parametrów wyłącznie na podzbiorach treningowych danego foldu, a na walidacji/teście są tylko aplikowane.
+
+Dla każdego foldu wykonywane są następujące kroki preprocssingu:
+
+- **Uzupełnienie braków w zmiennej `clean_pdays` (mediana):** Brakujące wartości w kolumnie określającej czas od ostatniego kontaktu zastąpiono medianą. Jest to podejście bezpieczne i neutralne dla modeli parametrycznych. Pozwala modelom liniowym, takim jak regresja logistyczna, działać, a jednocześnie nie być obciążonym radykalnymi pozostałymi wartościami, którymi moglibyśmy zastąpić wartości brakujące dla tej zmiennej;
+
+- **Imputacja zmiennych kategorycznych (`Bagged Trees`):** Dla zmiennych jakościowych (`job`, `marital`, `education`, `housing`, `loan`) zastosowano imputację opartą na zespole 5 drzew decyzyjnych (bagging). Zamiast wstawiać najczęściej występującą wartość (modę), model analizuje profil klienta i na podstawie pozostałych cech logicznie "odgaduje" brakujący wpis, co pozwala zachować naturalne korelacje w danych.
+
+- **Redukcja wymiarowości wskaźników makroekonomicznych (PCA):** Pięć silnie skorelowanych ze sobą zmiennych rynkowych skonsolidowano do **2 głównych komponentów** (PC1 i PC2) za pomocą analizy składowych głównych (PCA). Przed uruchomieniem algorytmu zmienne poddano standaryzacji, ponieważ PCA jest wrażliwe na różnice w skalach. Pozwoliło to usunąć współliniowość i uprościć strukturę danych bez utraty istotnych informacji rynkowych.
+
+- **Selekcja cech (Usuwanie zmiennych redundantnych):** Zbiór danych oczyszczono ze zmiennych `default` oraz `day_of_week`. Zmienna `default` zostaje usunięta ze względu na ekstremalny udział braków danych; `day_of_week` ze względu na brak związku ze zmienną wynikową. Zmienna `month` **pozostaje** w modelu, ponieważ macierz V Cramera wykazała jej związek z `y`.
+
+- **Przekształcenie zmiennych kategorycznych (One-Hot Encoding):** Wszystkie pozostałe zmienne nominalne przetransformowano do postaci zero-jedynkowej (zmienne *dummy*). Jest to krok obligatoryjny dla algorytmów takich jak XGBoost czy regresja logistyczna, które natywnie nie obsługują formatu tekstowego.
+
+- **Balansowanie klas (Downsampling):** Ze względu na silną nierównowagę klas w zbiorze treningowym (około 11% obserwacji klasy `yes`), zastosowano undersampling klasy większościowej (`no`) do poziomu klasy mniejszościowej. Krok ten wykonywany jest wyłącznie na danych treningowych każdego foldu i nie wpływa na zbiór walidacyjny ani testowy.
+
+Standaryzację przeprowadzono wyłącznie dla zmiennych wykorzystywanych w PCA. Po utworzeniu komponentów głównych nie wykonywano dalszej normalizacji zmiennych zero-jedynkowych, ponieważ taka transformacja utrudnia interpretację i nie jest wymagana przez większość rozważanych modeli.
+
+```{r}
+#| eval: false
+#| include: false
+library(themis)
+
+macro_vars <- c("emp.var.rate", "cons.price.idx", "cons.conf.idx", "euribor3m", "nr.employed")
+
+przepis_bazowy <- recipe(y ~ ., data = train_data) %>%
+
+  # --- imputacja ---
+  step_impute_median(clean_pdays) %>%
+  step_impute_bag(job, marital, education, housing, loan, trees = 5) %>%
+
+  # --- obsługa kategorii ---
+  step_novel(all_nominal_predictors()) %>%
+  step_unknown(all_nominal_predictors()) %>%
+
+  # --- redukcja redundancji ---
+  step_rm(day_of_week) %>%
+  step_zv(all_predictors()) %>%
+
+  # --- PCA (2 komponenty) ---
+  step_normalize(all_of(macro_vars)) %>%
+  step_pca(all_of(macro_vars), num_comp = 2) %>%
+
+  # --- encoding ---
+  step_dummy(all_nominal_predictors()) %>%
+
+  # --- final cleaning ---
+  step_zv(all_predictors()) %>%
+
+  # --- balansowanie klas tylko w danych treningowych resamplingu ---
+  step_downsample(y, under_ratio = 1, seed = 2026)
+```
+
+Do problemu klasyfikacyjnego używamy klasycznych modeli uczenia maszynowego:
+
+- regresja logistyczna: jest to model wychwytujący zależności liniowe i łatwo interpretowalny;
+
+- naiwny klasyfikator Bayesowski: jest prosty i opiera się o silne założenia statystyczne oraz dobrze sobie radzi z szumem w danych;
+
+- drzewo decyzyjne: wychwytuje nieliniowe zależności i interakcje między zmiennymi bez konieczności ich wcześniejszego definiowania, jest łatwo interpretowalny;
+
+- las losowy: redukuje problem wariancji i przeuczenia, który charakteryzuje pojedyncze drzewa, oferując wysoką dokładność i stabilność predykcyjną;
+
+- XGBoost: zaawansowany algorytm gradient boosting oparty na drzewach decyzyjnych, wyposażony w mechanizmy regularyzacji ograniczające przeuczenie i umożliwiający modelowanie złożonych zależności nieliniowych;
+
+- Prosta sieć neuronowa (NN): pozwala na mapowanie skrajnie złożonych, nieliniowych relacji matematycznych w danych. Wprowadzenie sieci neuronowej do zestawienia pozwala sprawdzić, czy podejście głębokie przewyższy skuteczności klasyczne algorytmy uczenia maszynowego.
+
+W procesie trenowania wszystkie modele będą oceniane w oparciu o walidację krzyżową na zbiorze treningowym. Po wyborze najlepszego modelu względem metryki ROC AUC, dokonana zostanie jego finalizacja (trenowanie na pełnym zbiorze treningowym) oraz ocena na zbiorze testowym. Wszystkie wyniki (metryki CV, predykcje, parametry) są zapisane, co pozwala na pominięcie ponownego trenowania modeli.
+
+```{r}
+#| eval: false
+#| include: false
+# ==============================================================================
+# TRENING MODELI – wyścig hipersześcianu łacińskiego (tune_race_anova)
+# ==============================================================================
+set.seed(2026)
+library(workflowsets)
+library(tune)
+library(dials)
+library(finetune)
+library(doParallel)
+
+registerDoParallel(cores = 16)
+
+# Regresja logistyczna z regularyzacją elastycznej sieci (glmnet)
+lr_spec <- logistic_reg(
+  penalty  = tune(),
+  mixture  = tune()
+) %>%
+  set_engine("glmnet") %>%
+  set_mode("classification")
+
+# Drzewo decyzyjne
+dt_spec <- decision_tree(
+  tree_depth = tune(),
+  min_n      = tune()
+) %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+# Las losowy
+rf_spec <- rand_forest(
+  mtry   = tune(),
+  trees  = 300,
+  min_n  = tune()
+) %>%
+  set_engine("ranger", num.threads = 1) %>%
+  set_mode("classification")
+
+# XGBoost – trees stałe, tuning reszty
+xgb_spec <- boost_tree(
+  trees          = 200,
+  tree_depth     = tune(),
+  learn_rate     = tune(),
+  min_n          = tune(),
+  loss_reduction = tune()
+) %>%
+  set_engine("xgboost", nthread = 1) %>%
+  set_mode("classification")
+
+# Prosta sieć neuronowa
+nn_spec <- mlp(
+  hidden_units = tune(),
+  penalty      = tune(),
+  epochs       = 100
+) %>%
+  set_engine("nnet") %>%
+  set_mode("classification")
+
+zestaw_modeli <- workflow_set(
+  preproc = list(bazowy_przepis = przepis_bazowy),
+  models = list(
+    log_reg       = lr_spec,
+    decision_tree = dt_spec,
+    random_forest = rf_spec,
+    xgboost       = xgb_spec,
+    neural_net    = nn_spec
+  )
+)
+
+# Kontrola wyścigu (racing) – eliminuje słabe konfiguracje po 2 fałdach
+ctrl_race <- control_race(
+  save_pred      = TRUE,
+  parallel_over  = "everything",
+  allow_par      = TRUE,
+  verbose        = TRUE,
+  verbose_elim   = TRUE,
+  burn_in = 2
+)
+
+# Trening: hipersześcian łaciński (15 pkt) + metoda wyścigów
+wyniki_modeli <- workflow_map(
+  zestaw_modeli,
+  fn        = "tune_race_anova",
+  resamples = folds,
+  grid      = 15,
+  metrics   = metric_set(
+    roc_auc, pr_auc, precision, recall, f_meas
+  ),
+  control = ctrl_race
+)
+
+stopImplicitCluster()
+```
+
+```{r}
+#| eval: false
+#| include: false
+# #zapis wyników modeli
+# saveRDS(wyniki_modeli, "wyniki_modeli.rds")
+# 
+# #zapis rankingu modeli
+# best_per_model <- wyniki_modeli %>%
+#   rank_results(rank_metric = "roc_auc")
+# 
+# saveRDS(best_per_model, "best_per_model.rds")
+# 
+# # zapis najlepszych parametrów modeli
+# best_params <- lapply(
+#   wyniki_modeli$result,
+#   function(x) {
+#     tryCatch(
+#       select_best(x, metric = "roc_auc"),
+#       error = function(e) NULL
+#     )
+#   }
+# )
+# 
+# names(best_params) <- wyniki_modeli$wflow_id
+# 
+# saveRDS(best_params, "best_params.rds")
+# 
+# #zapis wszystkich metryk
+# all_metrics <- collect_metrics(wyniki_modeli)
+# 
+# saveRDS(all_metrics, "all_metrics.rds")
+# write.csv(all_metrics,
+#           "all_metrics.csv",
+#           row.names = FALSE)
+# 
+# #zapis predykcji z CV
+# all_predictions <- collect_predictions(wyniki_modeli)
+# 
+# saveRDS(all_predictions, "all_predictions.rds")
+# 
+# best_configs <- purrr::map_df(
+#   wyniki_modeli$wflow_id,
+#   function(id){
+# 
+#     res <- extract_workflow_set_result(
+#       wyniki_modeli,
+#       id
+#     )
+# 
+#     select_best(
+#       res,
+#       metric = "roc_auc"
+#     ) %>%
+#       mutate(model = id)
+#   }
+# )
+# 
+# write.csv(
+#   best_configs,
+#   "best_configs.csv",
+#   row.names = FALSE
+# )
+
+# --- FINALIZACJA MODELU ---
+# Ekstrakcja najlepszego modelu i jego parametrów
+best_model_id <- wyniki_modeli %>%
+  rank_results(rank_metric = "roc_auc") %>%
+  slice(1) %>%
+  pull(wflow_id)
+
+#  wyniki tuningu dla najlepszego modelu
+#best_result <- extract_workflow_set_result(zestaw_modeli, best_model_id)
+
+#  najlepsze parametry
+#best_params <- select_best(best_result, metric = "roc_auc")
+
+# Wyciągnij workflow i sfinalizuj z najlepszymi parametrami
+final_wf <- extract_workflow(zestaw_modeli, best_model_id) |>
+  finalize_workflow(best_params[[best_model_id]])
+
+# Trenowanie na pełnym zbiorze treningowym i ewaluacja na zbiorze testowym
+final_fit <- final_wf %>%
+  last_fit(data_split)
+
+# Zapis artefaktów finalizacji
+saveRDS(final_fit, "final_fit.rds")
+saveRDS(final_wf, "final_wf.rds")
+```
+
+# Budowa, trenowanie oraz wstępne porównanie wybranych modeli uczenia maszynowego
+
+W tej części porównujemy kilka rodzin modeli uczenia maszynowego. Wcześniejsze uruchomienie treningu zostało zapisane do plików `.rds`, dlatego poniższy raport nie trenuje ponownie wszystkich modeli. Dzięki temu możemy odtworzyć ranking, wykresy i predykcje dokładnie z zapisanych wyników, bez wielogodzinnego ponownego strojenia hiperparametrów.
+
+W modelowaniu wykorzystano regresję logistyczną z regularyzacją, drzewo decyzyjne, las losowy, XGBoost oraz prostą sieć neuronową. Wszystkie modele korzystały z tej samej receptury przygotowania danych, co pozwala porównywać ich wyniki w uczciwy sposób.
+
+```{r}
+#| include: false
+# Ładowanie zapisanych wyników - bez ponownego trenowania modeli
+model_cache_dir <- "C:/Users/morem/Documents/eksploracja"
+required_cache_files <- c(
+  "wyniki_modeli.rds",
+  "all_metrics.rds",
+  "all_predictions.rds",
+  "best_per_model.rds",
+  "best_params.rds",
+  "best_configs.csv",
+  "data_split.rds",
+  "test_data.rds",
+  "final_fit.rds",
+  "final_wf.rds"
+)
+
+cache_status <- tibble(
+  plik = required_cache_files,
+  istnieje = file.exists(file.path(model_cache_dir, required_cache_files))
+)
+
+knitr::kable(cache_status, caption = "Kontrola dostępności zapisanych wyników modelowania")
+
+if (any(!cache_status$istnieje)) {
+  stop("Brakuje co najmniej jednego pliku z zapisanymi wynikami modelowania.")
+}
+
+wyniki_modeli <- readRDS(file.path(model_cache_dir, "wyniki_modeli.rds"))
+all_metrics <- readRDS(file.path(model_cache_dir, "all_metrics.rds"))
+all_predictions <- readRDS(file.path(model_cache_dir, "all_predictions.rds"))
+best_per_model_raw <- readRDS(file.path(model_cache_dir, "best_per_model.rds"))
+best_params_all <- readRDS(file.path(model_cache_dir, "best_params.rds"))
+best_configs <- read.csv(file.path(model_cache_dir, "best_configs.csv"))
+data_split <- readRDS(file.path(model_cache_dir, "data_split.rds"))
+test_data <- readRDS(file.path(model_cache_dir, "test_data.rds"))
+final_fit <- readRDS(file.path(model_cache_dir, "final_fit.rds"))
+final_wf <- readRDS(file.path(model_cache_dir, "final_wf.rds"))
+
+model_labels <- c(
+  bazowy_przepis_log_reg = "Regresja logistyczna",
+  bazowy_przepis_decision_tree = "Drzewo decyzyjne",
+  bazowy_przepis_random_forest = "Las losowy",
+  bazowy_przepis_xgboost = "XGBoost",
+  bazowy_przepis_neural_net = "Sieć neuronowa"
+)
+
+metric_labels <- c(
+  roc_auc = "ROC AUC",
+  pr_auc = "PR AUC",
+  precision = "Precyzja",
+  recall = "Czułość",
+  f_meas = "F1"
+)
+
+best_cv_by_model <- all_metrics %>%
+  filter(.metric == "roc_auc") %>%
+  group_by(wflow_id) %>%
+  slice_max(mean, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(
+    model_name = recode(wflow_id, !!!model_labels),
+    wynik_roc_auc = mean
+  ) %>%
+  arrange(desc(wynik_roc_auc))
+
+best_model_id <- best_cv_by_model %>%
+  slice(1) %>%
+  pull(wflow_id)
+
+best_params <- best_params_all[[best_model_id]]
+
+best_model_metrics <- all_metrics %>%
+  inner_join(best_cv_by_model %>% select(wflow_id, .config, model_name), by = c("wflow_id", ".config")) %>%
+  filter(.metric %in% names(metric_labels)) %>%
+  mutate(
+    metric_name = recode(.metric, !!!metric_labels),
+    model_name = factor(model_name, levels = rev(best_cv_by_model$model_name))
+  )
+
+best_preds <- all_predictions %>%
+  inner_join(best_cv_by_model %>% select(wflow_id, .config), by = c("wflow_id", ".config"))
+
+final_predictions <- collect_predictions(final_fit)
+final_metrics <- collect_metrics(final_fit)
+cal_df <- final_predictions %>%
+  rename(prob = .pred_yes)
+
+```
+
+```{r}
+max_configs <- 15
+
+podsumowanie <- all_metrics |>
+  dplyr::group_by(wflow_id) |>
+  dplyr::summarise(
+    model = dplyr::recode(dplyr::first(wflow_id), !!!model_labels),
+    konfiguracje = dplyr::n_distinct(.config),
+    odrzucone_anova = max_configs - konfiguracje,
+    pct_odrzuconych = scales::percent(odrzucone_anova / max_configs, accuracy = 1),
+    fold = 5L,
+    treningi = konfiguracje * fold,
+    .groups = "drop"
+  )
+
+podsumowanie |>
+  dplyr::arrange(dplyr::desc(odrzucone_anova)) |>
+  dplyr::bind_rows(
+    dplyr::tibble(
+      model = "RAZEM",
+      konfiguracje = sum(podsumowanie$konfiguracje),
+      odrzucone_anova = sum(podsumowanie$odrzucone_anova),
+      pct_odrzuconych = scales::percent(sum(podsumowanie$odrzucone_anova) / (max_configs * dplyr::n_distinct(all_metrics$wflow_id)), accuracy = 1),
+      fold = NA_integer_,
+      treningi = sum(podsumowanie$treningi)
+    )
+  ) |>
+  dplyr::select(-wflow_id) |>
+  knitr::kable(
+    col.names = c("Model", "Testowane konfiguracje", "Odrzucone przez ANOVA race",
+                  "% odrzuconych", "Liczba foldów", "Łączna liczba treningów"),
+    align = c("l", "c", "c", "c", "c", "c")
+  )
+```
+
+Ostatecznie przeprowadzono 150 treningów wybranych modeli z różnymi parametrami stosując przeszukiwanie z pomocą hipersześcianu łacińskiego. Metoda wyścigów pozwoliła przyspieszyć wybór optymalnych modeli, odrzucając 45 zestawów hiperparametrów, które nie przyniosłyby poprawy, co zmniejszyło liczbę przeprowadzanych treningów o 225.
+
+## Najlepsze konfiguracje modeli
+
+Poniżej pokazano najlepszą konfigurację każdego modelu wybraną według metryki ROC AUC. Nie wszystkie kolumny dotyczą każdego modelu, ponieważ różne algorytmy mają różne hiperparametry.
+
+```{r}
+best_configs %>%
+  mutate(model = recode(model, !!!model_labels)) %>%
+  rename(Model = model) %>%
+  knitr::kable(digits = 5, caption = "Najlepsze hiperparametry poszczególnych modeli")
+```
+
+## Wstępne porównanie modeli
+
+ROC AUC informuje, jak dobrze model szereguje klientów od najbardziej do najmniej prawdopodobnych do założenia lokaty. Jest to wygodna metryka porównawcza, ale przy niezbalansowanych klasach warto patrzeć również na PR AUC, precyzję, czułość i F1.
+
+::: panel-tabset
+## Ranking ROC AUC
+
+```{r}
+ggplot(best_cv_by_model, aes(x = reorder(model_name, wynik_roc_auc), y = wynik_roc_auc)) +
+  geom_col(fill = "#1f4e79", alpha = 0.88, color = "white", width = 0.72) +
+  geom_errorbar(aes(ymin = wynik_roc_auc - std_err, ymax = wynik_roc_auc + std_err), width = 0.25, color = "#17324d") +
+  geom_text(aes(label = round(wynik_roc_auc, 3)), hjust = -0.15, fontface = "bold", size = 3.4) +
+  scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0, 0.10))) +
+  labs(
+    title = "Ranking modeli według ROC AUC",
+    x = "Model",
+    y = "ROC AUC"
+  ) +
+  theme_project() +
+  coord_flip()
+```
+
+## Metryki CV
+
+```{r}
+ggplot(best_model_metrics, aes(x = model_name, y = mean, fill = metric_name)) +
+  geom_col(position = position_dodge(width = 0.78), color = "white", width = 0.68, alpha = 0.9) +
+  geom_errorbar(
+    aes(ymin = pmax(mean - std_err, 0), ymax = pmin(mean + std_err, 1), group = metric_name),
+    position = position_dodge(width = 0.78),
+    width = 0.22,
+    color = "#17324d"
+  ) +
+  scale_fill_manual(values = c("#1f4e79", "#86a6c0", "#b2c8db", "#5b7c99", "#17324d")) +
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    title = "Porównanie modeli na walidacji krzyżowej",
+    x = "Model",
+    y = "Wartość metryki",
+    fill = "Metryka"
+  ) +
+  theme_project() +
+  theme(legend.position = "bottom") +
+  coord_flip()
+```
+
+## Tabela wyników
+
+```{r}
+best_model_metrics %>%
+  select(Model = model_name, Metryka = metric_name, Średnia = mean, `Błąd standardowy` = std_err) %>%
+  arrange(Model, desc(Średnia)) %>%
+  knitr::kable(digits = 4, caption = "Metryki najlepszych konfiguracji modeli w walidacji krzyżowej")
+```
+:::
+
+Jak widać, w ok. 79% XGBoost i las losowy losowej obserwacji o klasie pozytywnej przypiszą właśnie klasę pozytywną o wiele częściej niż klasę negatywną.
+
+PR-AUC natomiast skupia się na pozytywnej klasie - co jest dla nas ważne, ponieważ chcemy poprawnie wskazywać klientów, którzy założą lokatę terminową. Metryka ta została wybrana jako uzupełnienie ROC-AUC. Największa wartość tej metryki przyjmuje drzewo decyzyjne, natomiast ma ono stosunkowo niską wartość precyzji.
+
+Wszystkie modele mają dobry poziom czułości kosztem precyzji. Z tego względu cierpi również wartość F1-score.
+
+Podsumowując, dla wszystkich modeli dobrze rozróżniamy klasy (na co wskazuje wartość ROC-AUC), natomiast gorzej wykrywamy klasę pozytywną (wartości PR-AUC w granicach 0.4-0.45 dla wszystkich modeli). Czułość bowiem ma o wiele wyższą wartość niż precyzja. Czyli dobrze wykrywamy klasę pozytywną ze wszystkich obserwacji mających klasę pozytywną, natomiast poprawność wykryć pozytywnej klasy nie jest zadowalająca.
+
+Najlepszy model w dalszej części raportu wybieramy według ROC AUC. Dodatkowe metryki pozwalają jednak sprawdzić, czy model nie osiąga dobrego rankingu kosztem bardzo słabego rozpoznawania klasy `yes`.
+
+# Ewaluacja modeli uczenia maszynowego oraz ich kalibracja
+
+Po wyborze najlepszego modelu korzystamy z zapisanej ewaluacji na zbiorze testowym. Zbiór testowy jest traktowany jako końcowa, jednorazowa ocena jakości modelu, dlatego nie wykorzystujemy go do strojenia hiperparametrów.
+
+```{r}
+final_metrics %>%
+  mutate(.metric = recode(.metric, !!!c(metric_labels, accuracy = "Accuracy", kap = "Kappa"))) %>%
+  select(-.config) %>% 
+  rename(Metryka = .metric, Estymator = .estimator, Wynik = .estimate) %>%
+  knitr::kable(digits = 4, caption = "Metryki XGBoost jako finalnego modelu na zbiorze testowym")
+```
+
+Dokładność modelu wynosi 0.837, ale nie powinna być główną podstawą oceny, ponieważ dane są silnie niezbalansowane, a klasa negatywna stanowi około 88.7% zbioru testowego. ROC-AUC na poziomie 0.804 wskazuje na umiarkowanie dobrą zdolność porządkowania klientów według prawdopodobieństwa założenia lokaty. Jednocześnie PR-AUC równe 0.461, precyzja 0.368, czułość 0.627 i F1 równe 0.464 pokazują kompromis: model wykrywa istotną część klientów z klasy `yes`, ale generuje też sporo fałszywych alarmów. Wartość Brier score równa 0.163 można uznać za umiarkowaną, lecz sama w sobie nie dowodzi dobrej kalibracji prawdopodobieństw.
+
+Wybrany model nie wskazuje oznak przeuczenia, ponieważ wartość ROC-AUC uzyskana na zbiorze testowym jest zbliżona do wartości tejże metryki uzyskanej podczas 5-krotnej walidacji krzyżowej. Wskazuje to na to, że model dobrze sobie radzi z niewidzianymi wcześniej danymi.
+
+## Macierz pomyłek
+
+Macierz pomyłek pokazuje, ile obserwacji zostało przypisanych do poprawnych i błędnych klas. W tym projekcie szczególnie ważne są pomyłki dotyczące klasy `yes`, ponieważ to ona odpowiada klientom potencjalnie zainteresowanym lokatą.
+
+```{r}
+conf_tbl <- as.data.frame(table(
+  Prawdziwa = final_predictions$y,
+  Predykcja = final_predictions$.pred_class
+))
+
+knitr::kable(conf_tbl, caption = "Macierz pomyłek finalnego modelu")
+```
+
+```{r}
+ggplot(conf_tbl, aes(x = Predykcja, y = Prawdziwa, fill = Freq)) +
+  geom_tile(color = "white", linewidth = 1) +
+  geom_text(aes(label = Freq), color = "white", fontface = "bold", size = 5) +
+  scale_fill_gradient(low = "#86a6c0", high = "#17324d") +
+  labs(
+    title = "Macierz pomyłek finalnego modelu",
+    x = "Klasa przewidziana przez model",
+    y = "Klasa rzeczywista",
+    fill = "Liczba"
+  ) +
+  theme_project() +
+  theme(legend.position = "right")
+```
+
+Widzimy poprawne zaklasyfikowanie 6309 obserwacji jako klasa negatywna oraz 582 jako klasa pozytywna. Model również popełnia błędy - 999 obserwacji o klasie negatywnej są zaklasyfikowane jako klasa pozytywna,, a 346 obserwacji o klasie pozytywnej - jako negatywna. Obniżenie progu klasyfikacyjnego pozwoliłoby zwiększyć czułość modelu i zmniejszyć liczbę błędów FN.
+
+## Krzywe ROC, PR i kalibracja
+
+Krzywa ROC pokazuje kompromis między wykrywaniem klasy pozytywnej i fałszywymi alarmami dla różnych progów decyzyjnych. Krzywa PR jest szczególnie przydatna przy niezbalansowanych klasach, bo skupia się na jakości przewidywania klasy `yes`. Kalibracja sprawdza natomiast, czy przewidywane prawdopodobieństwa są zgodne z rzeczywistym udziałem sukcesów.
+
+::: panel-tabset
+## ROC
+
+```{r}
+roc_curve(final_predictions, truth = y, .pred_yes) %>%
+  autoplot() +
+  labs(title = "Krzywa ROC finalnego modelu") +
+  theme_project()
+```
+
+## Precision-Recall
+
+```{r}
+pr_curve(final_predictions, truth = y, .pred_yes) %>%
+  autoplot() +
+  labs(title = "Krzywa Precision-Recall finalnego modelu") +
+  theme_project()
+```
+
+## Kalibracja
+
+```{r}
+calibration_plot_data <- cal_df %>%
+  mutate(prob_bin = dplyr::ntile(prob, 10)) %>%
+  group_by(prob_bin) %>%
+  summarise(
+    srednie_prawdopodobienstwo = mean(prob, na.rm = TRUE),
+    rzeczywisty_udzial_yes = mean(y == "yes", na.rm = TRUE),
+    liczebnosc = n(),
+    .groups = "drop"
+  )
+
+ggplot(calibration_plot_data, aes(x = srednie_prawdopodobienstwo, y = rzeczywisty_udzial_yes)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray45") +
+  geom_line(color = "#1f4e79", linewidth = 1.1) +
+  geom_point(aes(size = liczebnosc), color = "#17324d", alpha = 0.9) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 1)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 1)) +
+  scale_size_continuous(range = c(2.5, 6)) +
+  labs(
+    title = "Kalibracja prawdopodobieństw finalnego modelu",
+    x = "Średnie przewidywane prawdopodobieństwo klasy yes",
+    y = "Rzeczywisty udział klasy yes",
+    size = "Liczebność"
+  ) +
+  theme_project() +
+  theme(legend.position = "right")
+```
+:::
+
+Model osiąga sensowną, ale umiarkowaną jakość rankingu, co widać na krzywej ROC oraz wartości ROC-AUC. Krzywa Precision-Recall pokazuje natomiast, że wyższą precyzję można uzyskać kosztem niższej czułości, czyli mniejszej liczby poprawnie wykrytych klientów z klasy `yes`. Z wykresu kalibracji wynika, że model zawyża prawdopodobieństwa klasy `yes`: rzeczywisty udział tej klasy jest niższy od średnich przewidywanych prawdopodobieństw, dlatego krzywa leży poniżej linii idealnej `y = x`.
+
+# Przeprowadzenie analizy popełnianych błędów przez wykorzystane modele predykcyjne
+
+Sama wartość metryki nie mówi jeszcze, gdzie model się myli. Dlatego poniżej rozdzielamy predykcje na cztery grupy: poprawnie rozpoznane sukcesy, poprawnie rozpoznane odmowy, fałszywe alarmy oraz przeoczone sukcesy.
+
+```{r}
+error_analysis <- final_predictions %>%
+  bind_cols(
+    test_data %>%
+      select(age_bin, job, education, poutcome, contact, was_contacted_before, month, clean_pdays)
+  ) %>%
+  mutate(
+    error_type = case_when(
+      y == "yes" & .pred_class == "yes" ~ "TP: poprawnie wykryte yes",
+      y == "no" & .pred_class == "no" ~ "TN: poprawnie wykryte no",
+      y == "no" & .pred_class == "yes" ~ "FP: fałszywy alarm",
+      y == "yes" & .pred_class == "no" ~ "FN: przeoczony sukces",
+      TRUE ~ "Inne"
+    ),
+    error_type = factor(
+      error_type,
+      levels = c(
+        "TP: poprawnie wykryte yes",
+        "TN: poprawnie wykryte no",
+        "FP: fałszywy alarm",
+        "FN: przeoczony sukces",
+        "Inne"
+      )
+    )
+  )
+
+error_summary <- error_analysis %>%
+  count(error_type) %>%
+  mutate(udzial = n / sum(n))
+
+knitr::kable(error_summary, digits = 4, caption = "Typy poprawnych i błędnych decyzji finalnego modelu")
+```
+
+```{r}
+ggplot(error_summary, aes(x = error_type, y = udzial, fill = error_type)) +
+  geom_col(color = "white", width = 0.72, alpha = 0.9) +
+  geom_text(aes(label = scales::percent(udzial, accuracy = 0.1)), vjust = -0.25, fontface = "bold", size = 3.3) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1), expand = expansion(mult = c(0, 0.12))) +
+  scale_fill_manual(values = c("#1f4e79", "#86a6c0", "#b2c8db", "#5b7c99", "gray60")) +
+  labs(
+    title = "Udział typów decyzji finalnego modelu",
+    x = "Typ decyzji",
+    y = "Udział w zbiorze testowym"
+  ) +
+  theme_project() +
+  theme(axis.text.x = element_text(angle = 25, hjust = 1), legend.position = "none")
+```
+
+Jak widać, model dobrze rozpoznaje klasę negatywną, co nie jest dziwne, ponieważ ma znaczącą przewagę liczebną w zbiorze danych. Model bowiem zaklasyfikował poprawnie 76,6% klientów do klasy negatywnej, a źle względem tej klasy - 12,1% klientów.
+
+Model nie wychwycił 4,2% klientów zainteresowanych założeniem lokaty. Idealnie byłoby zniwelować ten rodzaj błędu. Moglibyśmy go zminimalizować zmnniejszając próg klasyfikacyjny.
+
+Najbardziej praktyczne są dwie grupy błędów: `FP`, czyli klienci wskazani jako potencjalnie zainteresowani, którzy faktycznie nie założyli lokaty, oraz `FN`, czyli klienci zainteresowani lokatą, których model nie wychwycił. Pierwszy typ może oznaczać niepotrzebny kontakt, drugi utraconą szansę sprzedażową.
+
+```{r}
+plot_error_by_var <- function(data, var_name, label_x) {
+  data %>%
+    filter(error_type %in% c("FP: fałszywy alarm", "FN: przeoczony sukces")) %>%
+    filter(!is.na(.data[[var_name]])) %>%
+    count(error_type, .data[[var_name]], name = "liczba") %>%
+    group_by(error_type) %>%
+    mutate(udzial = liczba / sum(liczba)) %>%
+    ungroup() %>%
+    ggplot(aes(x = reorder(as.factor(.data[[var_name]]), udzial), y = udzial, fill = error_type)) +
+    geom_col(position = "dodge", color = "white", alpha = 0.9) +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+    scale_fill_manual(values = c("#1f4e79", "#86a6c0")) +
+    labs(
+      title = paste("Błędy FP i FN według zmiennej", label_x),
+      x = label_x,
+      y = "Udział w danym typie błędu",
+      fill = "Typ błędu"
+    ) +
+    theme_project() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "bottom")
+}
+```
+
+::: panel-tabset
+## Zawód
+
+```{r}
+plot_error_by_var(error_analysis, "job", "Zawód")
+```
+
+## Wykształcenie
+
+```{r}
+plot_error_by_var(error_analysis, "education", "Wykształcenie")
+```
+
+## Wynik poprzedniej kampanii
+
+```{r}
+plot_error_by_var(error_analysis, "poutcome", "Wynik poprzedniej kampanii")
+```
+
+## Kontakt wcześniejszy
+
+```{r}
+plot_error_by_var(error_analysis, "was_contacted_before", "Czy klient był wcześniej kontaktowany")
+```
+:::
+
+Wśród błędów FN częściej pojawiają się pracownicy fizyczni, technicy oraz osoby pracujące w sektorze usług. Podobny wzorzec widać dla osób z podstawowym, 9-letnim wykształceniem oraz dla klientów bez wcześniejszego kontaktu, oznaczonych jako `nonexistent` w wyniku poprzedniej kampanii, co jest spójne z błędami widocznymi przy zmiennej `was_contacted_before`. Wśród błędów FP częściej pojawiają się natomiast studenci, emeryci, osoby ze studiami wyższymi oraz klienci, którzy nie założyli lokaty w trakcie poprzedniej kampanii.
+
+Model częściej wskazuje fałszywe alarmy także wśród klientów, z którymi wcześniej się kontaktowano. Można więc przypuszczać, że wcześniejszy kontakt jest dla modelu silnym sygnałem zainteresowania, ale nie zawsze przekłada się na rzeczywiste założenie lokaty.
+
+# Analiza wyjaśnialności decyzji modeli predykcyjnych
+
+Wyjaśnialność traktujemy jako wsparcie interpretacji modelu. Nie oznacza ona automatycznie zależności przyczynowej, ale pomaga zobaczyć, które cechy były dla finalnego modelu najbardziej użyteczne przy rozróżnianiu klientów. Do wyjaśnienia decyzji modelu wykorzystamy permutacyjną ważność cech modeli drzewiastych.
+
+```{r}
+library(vip)
+
+best_fit <- extract_workflow(final_fit)
+
+vip_result <- tryCatch(
+  {
+    vip(best_fit, num_features = 15) +
+      labs(title = "Najważniejsze zmienne finalnego modelu") +
+      theme_project()
+  },
+  error = function(e) {
+    tibble(
+      Komunikat = paste(
+        "Dla wybranego typu modelu nie udało się automatycznie wyznaczyć ważności zmiennych funkcją vip().",
+        "W takiej sytuacji interpretację należy oprzeć na metrykach, analizie błędów oraz ewentualnie na permutation importance."
+      )
+    ) %>%
+      knitr::kable(caption = "Informacja o wyjaśnialności modelu")
+  }
+)
+
+vip_result
+```
+
+Potwierdzamy, że jeden z największych wpływów wywarła zmienna `was_contacted_before` o wartości 1. Ponadto znaczący wpływ na decyzje klienta ma obecna sytuacja gospodarcza. Co ciekawe maj też wpływa na decyzję, sposób kontaktu oraz pozytywny wynik kampanii marketingowej dla danego klienta.
+
+# Podsumowanie i sformułowanie wniosków
+
+Przeprowadzona analiza pokazuje pełny proces budowy modelu klasyfikacyjnego: od przygotowania danych, przez porównanie kilku rodzin modeli, po finalną ocenę na zbiorze testowym. Najważniejsze było zachowanie spójności celu projektu z walidacją: model ma rozpoznawać klientów podobnych do tych z dostępnych danych, dlatego zastosowano podział stratyfikowany i metryki odpowiednie dla klasy `yes`.
+
+Wyniki modeli należy interpretować łącznie. ROC AUC pokazuje ogólną zdolność rankingu klientów, PR AUC jest bardziej wymagające przy rzadkiej klasie pozytywnej, a precyzja i czułość mówią o praktycznych kosztach decyzji. Jeżeli model ma być używany w kampanii marketingowej, próg decyzyjny można później dostosować do celu biznesowego: większa czułość pozwala znaleźć więcej potencjalnych klientów, ale zwykle zwiększa liczbę fałszywych alarmów.
+
+Analiza błędów wskazuje, w jakich grupach model częściej myli się przy klasie `yes`. To miejsce jest szczególnie przydatne do dalszej pracy, ponieważ pokazuje, czy model przeocza konkretne typy klientów albo zbyt często oznacza jako zainteresowanych klientów z określonych segmentów.
+
+# Podstawowe wdrożenie modelu wybranego na podstawie przeprowadzonej ewaluacji oraz test predykcyjny
+
+Na końcu sprawdzamy, jak wyglądałoby podstawowe użycie modelu. W praktyce bank mógłby przekazać do modelu dane klienta przed kontaktem, a model zwróciłby przewidywaną klasę oraz prawdopodobieństwo założenia lokaty. Takie prawdopodobieństwo może pomóc w priorytetyzacji kontaktów, ale nie powinno być jedyną podstawą decyzji biznesowej.
+
+```{r}
+deployed_workflow <- extract_workflow(final_fit)
+
+example_rows <- unique(round(seq(1, nrow(test_data), length.out = 3)))
+deployment_examples <- test_data %>%
+  slice(example_rows)
+
+deployment_predictions <- bind_cols(
+  deployment_examples %>%
+    select(age_bin, job, education, poutcome, contact, was_contacted_before, y),
+  predict(deployed_workflow, deployment_examples, type = "prob"),
+  predict(deployed_workflow, deployment_examples, type = "class")
+) %>%
+  rename(
+    `Prawdopodobieństwo no` = .pred_no,
+    `Prawdopodobieństwo yes` = .pred_yes,
+    `Predykcja modelu` = .pred_class,
+    `Rzeczywista decyzja` = y
+  )
+
+knitr::kable(
+  deployment_predictions,
+  digits = 4,
+  caption = "Przykładowy test predykcyjny finalnego modelu na obserwacjach ze zbioru testowego"
+)
+```
+
+Powyższa tabela pokazuje minimalny wariant wdrożenia: dla kilku klientów model zwraca klasę oraz prawdopodobieństwo klasy `yes`. W prawdziwym zastosowaniu taki wynik można połączyć z progiem decyzyjnym, np. kontaktować się najpierw z klientami o najwyższym prawdopodobieństwie pozytywnej odpowiedzi.

@@ -1,0 +1,6 @@
+"penalty","mixture",".config","model","tree_depth","min_n","mtry","learn_rate","loss_reduction","hidden_units"
+0.00138949549437314,0.660714285714286,"pre0_mod11_post0","bazowy_przepis_log_reg",NA,NA,NA,NA,NA,NA
+NA,NA,"pre0_mod04_post0","bazowy_przepis_decision_tree",4,37,NA,NA,NA,NA
+NA,NA,"pre0_mod04_post0","bazowy_przepis_random_forest",NA,37,11,NA,NA,NA
+NA,NA,"pre0_mod14_post0","bazowy_przepis_xgboost",9,37,NA,0.0177827941003892,4.77058269614393,NA
+0.193069772888325,NA,"pre0_mod04_post0","bazowy_przepis_neural_net",NA,NA,NA,NA,NA,2
